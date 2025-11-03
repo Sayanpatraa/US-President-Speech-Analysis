@@ -151,12 +151,12 @@ This project is licensed under the **MIT License** — see the `LICENSE` file fo
 
 ## References
 
-1. The Miller Center of Public Affairs. (n.d.). *Presidential Speech Archive.* Retrieved from [https://data.millercenter.org/](https://data.millercenter.org/)  
-2. The American Presidency Project. (n.d.). *Public Papers of the Presidents.* Retrieved from [https://www.presidency.ucsb.edu/](https://www.presidency.ucsb.edu/)  
-3. Araci, D. (2019). *FinBERT: Financial Sentiment Analysis with Pretrained Language Models.* arXiv:1908.10063.  
-4. Blei, D. M., Ng, A. Y., & Jordan, M. I. (2003). *Latent Dirichlet Allocation.* *Journal of Machine Learning Research*, 3, 993–1022.  
-5. Lundberg, S. M., & Lee, S. I. (2017). *A Unified Approach to Interpreting Model Predictions (SHAP).* *Advances in Neural Information Processing Systems.*  
-6. Ribeiro, M. T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* *Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining.*  
-7. Hutto, C. J., & Gilbert, E. (2014). *VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text.* *Proceedings of the International AAAI Conference on Web and Social Media.*  
+ The Miller Center of Public Affairs. (n.d.). *Presidential Speech Archive.* Retrieved from [https://data.millercenter.org/](https://data.millercenter.org/)  
+ The American Presidency Project. (n.d.). *Public Papers of the Presidents.* Retrieved from [https://www.presidency.ucsb.edu/](https://www.presidency.ucsb.edu/)  
+ Araci, D. (2019). *FinBERT: Financial Sentiment Analysis with Pretrained Language Models.* arXiv:1908.10063.  
+ Blei, D. M., Ng, A. Y., & Jordan, M. I. (2003). *Latent Dirichlet Allocation.* *Journal of Machine Learning Research*, 3, 993–1022.  
+ Lundberg, S. M., & Lee, S. I. (2017). *A Unified Approach to Interpreting Model Predictions (SHAP).* *Advances in Neural Information Processing Systems.*  
+ Ribeiro, M. T., Singh, S., & Guestrin, C. (2016). *"Why Should I Trust You?": Explaining the Predictions of Any Classifier.* *Proceedings of the 22nd ACM SIGKDD International      Conference on Knowledge Discovery and Data Mining.*  
+ Hutto, C. J., & Gilbert, E. (2014). *VADER: A Parsimonious Rule-based Model for Sentiment Analysis of Social Media Text.* *Proceedings of the International AAAI Conference on Web and Social Media.*  
 
 ---
