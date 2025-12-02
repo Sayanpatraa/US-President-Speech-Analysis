@@ -1,4 +1,4 @@
-presidential-nlp/
+Analyzing_political_rhetoric/
 │
 ├── data/
 │   └── presidential_statements_scraped.csv
@@ -12,8 +12,16 @@ presidential-nlp/
 │   ├── summarizer.py
 │   └── rag_engine.py
 │
+├── Final-Group-Presentation/
+│   └── Slides
+│
+├── Final-Group-Project/
+│   └── Group
+│  
+│   
 ├── app/
 │   └── streamlit_app.py
+├── Misc
 │
 ├── notebooks/
 │   └── (optional: EDA / experiments)
