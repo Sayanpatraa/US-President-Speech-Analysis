@@ -1,0 +1,503 @@
+import os
+import re
+import pickle
+
+import numpy as np
+import pandas as pd
+
+# Topic modeling
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import LatentDirichletAllocation, NMF
+
+# Sentiment baseline
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    accuracy_score,
+    f1_score,
+)
+
+# Gensim
+import gensim
+from gensim import corpora
+from gensim.models.coherencemodel import CoherenceModel
+
+# Transformers
+import torch
+from transformers import (
+    pipeline,
+    AutoTokenizer,
+    AutoModelForSequenceClassification,
+)
+
+# -------------------------------------------------------------------
+# 0. Load scraped dataset
+# -------------------------------------------------------------------
+
+dataset = pd.read_csv("presidential_statements_scraped.csv")
+
+print("Raw dataset shape:", dataset.shape)
+print(dataset.head())
+print(dataset.columns)
+
+# Keep a raw copy
+dataset_raw = dataset.copy()
+
+# -------------------------------------------------------------------
+# 0.1 Ensure cleaned_content exists
+# -------------------------------------------------------------------
+
+def simple_clean_text(t: str) -> str:
+    t = str(t).lower()
+    t = re.sub(r"[^a-zA-Z ]+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+if "cleaned_content" not in dataset.columns:
+    print("cleaned_content not found. Creating it from 'content'...")
+    dataset["cleaned_content"] = dataset["content"].apply(simple_clean_text)
+else:
+    print("cleaned_content column already present. Using existing values.")
+
+#%% Feature additions: party affiliation
+
+party_affiliation = {
+    "Donald J. Trump (1st Term)": "Republican",
+    "Donald J. Trump (2nd Term)": "Republican",
+    "Joseph R. Biden, Jr.": "Democrat",
+    "Barack Obama": "Democrat",
+    "George W. Bush": "Republican",
+    "William J. Clinton": "Democrat",
+    "George Bush": "Republican",
+    "Ronald Reagan": "Republican",
+    "Jimmy Carter": "Democrat",
+    "Gerald R. Ford": "Republican",
+    "Richard Nixon": "Republican",
+    "Lyndon B. Johnson": "Democrat",
+    "John F. Kennedy": "Democrat",
+    "Dwight D. Eisenhower": "Republican",
+    "Harry S Truman": "Democrat",
+    "Franklin D. Roosevelt": "Democrat",
+    "Herbert Hoover": "Republican",
+    "Calvin Coolidge": "Republican",
+    "Warren G. Harding": "Republican",
+    "Woodrow Wilson": "Democrat",
+    "William Howard Taft": "Republican",
+    "Theodore Roosevelt": "Republican",
+    "William McKinley": "Republican",
+    "Grover Cleveland": "Democrat",
+    "Benjamin Harrison": "Republican",
+    "Chester A. Arthur": "Republican",
+    "James A. Garfield": "Republican",
+    "Rutherford B. Hayes": "Republican",
+    "Ulysses S. Grant": "Republican",
+    "Andrew Johnson": "Democrat",
+    "Abraham Lincoln": "Republican",
+    "James Buchanan": "Democrat",
+    "Franklin Pierce": "Democrat",
+    "Millard Fillmore": "Whig",
+    "Zachary Taylor": "Whig",
+    "James K. Polk": "Democrat",
+    "John Tyler": "Whig",
+    "William Harrison": "Whig",
+    "Martin Van Buren": "Democrat",
+    "Andrew Jackson": "Democrat",
+    "John Quincy Adams": "National Republican",
+    "James Monroe": "Democrat-Republican",
+    "James Madison": "Democrat-Republican",
+    "Thomas Jefferson": "Democrat-Republican",
+    "John Adams": "Federalist",
+    "George Washington": "Federalist",
+}
+
+print("\nUnique presidents in dataset:", len(dataset["president"].unique()))
+print(dataset["president"].unique())
+print("\nNumber of presidents in party_affiliation mapping:", len(party_affiliation))
+
+dataset["party"] = dataset["president"].map(party_affiliation)
+
+print("\nPresidents and mapped parties:")
+print(dataset[["president", "party"]].drop_duplicates().sort_values(by="president"))
+
+# Remove Gavin Newsom if present
+dataset = dataset[dataset["president"] != "Gavin Newsom"]
+print("\nIs Gavin Newsom present after filtering?:", "Gavin Newsom" in dataset["president"].unique())
+
+#%% Helper: display_topics for sklearn models
+
+def display_topics(model, feature_names, no_top_words):
+    for topic_idx, topic in enumerate(model.components_):
+        top_ids = topic.argsort()[:-no_top_words - 1:-1]
+        terms = [feature_names[i] for i in top_ids]
+        print(f"Topic {topic_idx}:")
+        print(" | ".join(terms))
+        print()
+
+#%% Topic modeling with sklearn LDA
+
+stopwords = ["american", "america", "states", "state", "president"]
+
+lda_vectorizer = CountVectorizer(
+    max_df=0.95,
+    min_df=2,
+    stop_words=stopwords,
+    ngram_range=(1, 3),
+)
+X_lda = lda_vectorizer.fit_transform(dataset["cleaned_content"])
+
+lda_sklearn = LatentDirichletAllocation(
+    n_components=7,
+    random_state=42,
+)
+lda_sklearn.fit(X_lda)
+
+no_top_words = 10
+lda_feature_names = lda_vectorizer.get_feature_names_out()
+
+print("\n=== Sklearn LDA Topics ===")
+display_topics(lda_sklearn, lda_feature_names, no_top_words)
+
+print("Sklearn LDA perplexity:", lda_sklearn.perplexity(X_lda))
+print("Sklearn LDA score:", lda_sklearn.score(X_lda))
+
+# Save sklearn LDA and its vectorizer
+with open("lda_sklearn.pkl", "wb") as f:
+    pickle.dump(lda_sklearn, f)
+with open("lda_vectorizer.pkl", "wb") as f:
+    pickle.dump(lda_vectorizer, f)
+print("Saved lda_sklearn.pkl and lda_vectorizer.pkl")
+
+#%% Topic modeling with Gensim LDA
+
+texts = [doc.split() for doc in dataset["cleaned_content"]]
+dictionary = corpora.Dictionary(texts)
+corpus = [dictionary.doc2bow(text) for text in texts]
+
+lda_gensim = gensim.models.LdaModel(
+    corpus,
+    num_topics=10,
+    id2word=dictionary,
+    passes=15,
+    random_state=42,
+)
+
+print("\n=== Gensim LDA Topics ===")
+for idx, topic in lda_gensim.print_topics(-1):
+    print(f"Topic {idx}: {topic}")
+
+coherence_model_lda = CoherenceModel(
+    model=lda_gensim,
+    texts=texts,
+    dictionary=dictionary,
+    coherence="c_v",
+)
+coherence_lda = coherence_model_lda.get_coherence()
+print(f"\nGensim LDA Coherence Score: {coherence_lda}")
+
+# Save Gensim LDA + dictionary
+os.makedirs("gensim_lda_model", exist_ok=True)
+lda_gensim.save("gensim_lda_model/gensim_lda_model")
+dictionary.save("gensim_lda_model/gensim_dictionary.dict")
+print("Saved Gensim LDA model and dictionary in gensim_lda_model/")
+
+#%% Topic modeling with NMF (TF-IDF)
+
+nmf_vectorizer = TfidfVectorizer(
+    max_df=0.95,
+    min_df=2,
+    stop_words="english",
+)
+X_nmf = nmf_vectorizer.fit_transform(dataset["cleaned_content"])
+
+nmf_model = NMF(n_components=5, random_state=42)
+nmf_model.fit(X_nmf)
+
+nmf_feature_names = nmf_vectorizer.get_feature_names_out()
+print("\n=== NMF Topics ===")
+display_topics(nmf_model, nmf_feature_names, no_top_words=10)
+
+# Save NMF model + TF-IDF vectorizer
+with open("nmf_model.pkl", "wb") as f:
+    pickle.dump(nmf_model, f)
+with open("nmf_tfidf_vectorizer.pkl", "wb") as f:
+    pickle.dump(nmf_vectorizer, f)
+print("Saved nmf_model.pkl and nmf_tfidf_vectorizer.pkl")
+
+#%% CardiffNLP political sentiment (max_length=512 and 256)
+
+model_name = "cardiffnlp/xlm-twitter-politics-sentiment"
+device = 0 if torch.cuda.is_available() else -1
+
+print("\nUsing device for sentiment:", "GPU" if device == 0 else "CPU")
+
+cardiff_tokenizer = AutoTokenizer.from_pretrained(model_name, use_fast=True)
+cardiff_model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+sentiment_classifier = pipeline(
+    "sentiment-analysis",
+    model=cardiff_model,
+    tokenizer=cardiff_tokenizer,
+    framework="pt",
+    device=device,
+)
+
+def normalize_tweet_style(text: str) -> str:
+    if not isinstance(text, str):
+        return ""
+    t = text
+    t = re.sub(r"https?://\S+", "<url>", t)
+    t = re.sub(r"www\.\S+", "<url>", t)
+    t = re.sub(r"@[A-Za-z0-9_]+", "<user>", t)
+    t = re.sub(r"#[A-Za-z0-9_]+", "<hashtag>", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+texts_norm = dataset["content"].fillna("").map(normalize_tweet_style).tolist()
+
+batch_sz = 32 if device == -1 else 64
+
+print("\nRunning CardiffNLP sentiment with max_length=512...")
+results_512 = sentiment_classifier(
+    texts_norm,
+    batch_size=batch_sz,
+    truncation=True,
+    padding=True,
+    max_length=512,
+)
+
+dataset["transformer_sentiment"] = [r["label"] for r in results_512]
+dataset["transformer_sentiment_score"] = [r["score"] for r in results_512]
+
+print(dataset[["transformer_sentiment"]].value_counts().head())
+print(dataset[["content", "transformer_sentiment", "transformer_sentiment_score"]].head())
+
+print("\nRunning CardiffNLP sentiment with max_length=256...")
+results_256 = sentiment_classifier(
+    texts_norm,
+    batch_size=batch_sz,
+    truncation=True,
+    padding=True,
+    max_length=256,
+)
+
+dataset["transformer_sentiment_256"] = [r["label"] for r in results_256]
+dataset["transformer_sentiment_score_256"] = [r["score"] for r in results_256]
+
+print(dataset[["transformer_sentiment_256"]].value_counts().head())
+print(dataset[["content", "transformer_sentiment_256", "transformer_sentiment_score_256"]].head())
+print("\nColumns after sentiment:", dataset.columns)
+
+#%% Zero-shot rhetoric classification: Tone, Strategy, Emotion (FAST + FIXED)
+
+# =============================================================
+# OPTIMIZED ZERO-SHOT CLASSIFICATION (FAST, CORRECT, GPU SAFE)
+# =============================================================
+from datasets import Dataset
+from transformers import pipeline
+import torch
+
+# Use MUCH faster MNLI model
+zero_shot_clf = pipeline(
+    task="zero-shot-classification",
+    model="valhalla/distilbart-mnli-12-1",   # 3–5× faster than bart-large-mnli
+    device=0 if torch.cuda.is_available() else -1,
+)
+
+# Convert your speeches to a HuggingFace Dataset
+ds = Dataset.from_dict({"text": dataset["content"].fillna("").tolist()})
+
+
+# -------------------------------------------------------------
+# Helper function: runs zero-shot for ANY label set
+# -------------------------------------------------------------
+def run_zero_shot(ds, labels, template, multi_label=False):
+    """
+    ds: HuggingFace Dataset
+    labels: list of candidate labels
+    template: hypothesis template
+    multi_label: True/False
+    """
+
+    def _apply(batch):
+        # 1. TRUNCATE TEXT (GPU safe + massively faster)
+        batch_texts = [t[:256] for t in batch["text"]]
+
+        # 2. Run zero-shot
+        out = zero_shot_clf(
+            batch_texts,
+            candidate_labels=labels,
+            hypothesis_template=template,
+            multi_label=multi_label,
+        )
+
+        # 3. Return DICT of lists — REQUIRED by Dataset.map
+        return {
+            "zs_labels": [o["labels"] for o in out],
+            "zs_scores": [o["scores"] for o in out],
+        }
+
+    return ds.map(_apply, batched=True, batch_size=32)
+
+
+# -------------------------------------------------------------
+# Define label groups
+# -------------------------------------------------------------
+tone_labels = ["combative", "conciliatory", "neutral-ceremonial"]
+
+strategy_labels = [
+    "blame-assignment", "credit-claiming", "call-to-action", "reassurance",
+    "commemoration-condolence", "policy-detail", "patriotic-appeal",
+    "religious-appeal", "populist-anti-elite", "law-and-order", "other"
+]
+
+emotion_labels = ["anger", "fear", "hope", "pride", "sadness", "trust"]
+
+
+# -------------------------------------------------------------
+# TONE CLASSIFICATION (single-label)
+# -------------------------------------------------------------
+print("\nRunning zero-shot tone classification...")
+
+tone_out = run_zero_shot(
+    ds,
+    labels=tone_labels,
+    template="The statement uses {} rhetoric.",
+    multi_label=False,
+)
+
+# pick final label with margin rule
+def pick_single_label(labels, scores, margin=0.05):
+    if len(scores) > 1 and scores[0] - scores[1] < margin:
+        return "mixed"
+    return labels[0]
+
+dataset["tone"] = [
+    pick_single_label(lbls, scrs)
+    for lbls, scrs in zip(tone_out["zs_labels"], tone_out["zs_scores"])
+]
+
+
+# -------------------------------------------------------------
+# STRATEGY CLASSIFICATION (multi-label)
+# -------------------------------------------------------------
+print("\nRunning zero-shot strategy classification...")
+
+strategy_out = run_zero_shot(
+    ds,
+    labels=strategy_labels,
+    template="The statement uses {} rhetoric.",
+    multi_label=True,
+)
+
+thr_strategy = 0.35
+dataset["strategies"] = [
+    [lab for lab, score in zip(lbls, scrs) if score >= thr_strategy] or ["other"]
+    for lbls, scrs in zip(strategy_out["zs_labels"], strategy_out["zs_scores"])
+]
+
+
+# -------------------------------------------------------------
+# EMOTION CLASSIFICATION (multi-label)
+# -------------------------------------------------------------
+print("\nRunning zero-shot emotion classification...")
+
+emotion_out = run_zero_shot(
+    ds,
+    labels=emotion_labels,
+    template="The statement expresses {}.",
+    multi_label=True,
+)
+
+thr_emotion = 0.30
+dataset["emotions"] = [
+    [lab for lab, score in zip(lbls, scrs) if score >= thr_emotion]
+    for lbls, scrs in zip(emotion_out["zs_labels"], emotion_out["zs_scores"])
+]
+
+
+# -------------------------------------------------------------
+# SUMMARY
+# -------------------------------------------------------------
+print("\n=== Zero-Shot Completed ===")
+print("Tone distribution:\n", dataset["tone"].value_counts())
+print("\nTop strategies:\n", dataset["strategies"].explode().value_counts().head(10))
+print("\nTop emotions:\n", dataset["emotions"].explode().value_counts().head(10))
+
+#%% Logistic Regression baseline for sentiment (BOW + TF-IDF)
+
+print("\n=== Logistic Regression Sentiment Baseline ===")
+print("Columns available:", dataset.columns)
+print(dataset.head())
+
+# Filter rows with valid cleaned_content and transformer_sentiment
+sent_df = dataset.dropna(subset=["cleaned_content", "transformer_sentiment"]).copy()
+print("\nRows used for sentiment baseline:", sent_df.shape[0])
+
+X_text = sent_df["cleaned_content"]
+y_sent = sent_df["transformer_sentiment"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X_text,
+    y_sent,
+    test_size=0.2,
+    random_state=42,
+    stratify=y_sent,
+)
+
+print("\nTrain size:", X_train.shape[0])
+print("Test size:", X_test.shape[0])
+print("\nTrain label distribution:\n", y_train.value_counts(normalize=True))
+
+sent_tfidf = TfidfVectorizer(
+    max_features=10000,
+    ngram_range=(1, 2),
+    stop_words="english",
+)
+
+X_train_tfidf = sent_tfidf.fit_transform(X_train)
+X_test_tfidf = sent_tfidf.transform(X_test)
+
+print("\nTF-IDF shapes:", X_train_tfidf.shape, X_test_tfidf.shape)
+
+sent_clf = LogisticRegression(
+    max_iter=1000,
+    n_jobs=-1,
+    class_weight="balanced",
+)
+
+sent_clf.fit(X_train_tfidf, y_train)
+
+y_pred = sent_clf.predict(X_test_tfidf)
+
+acc = accuracy_score(y_test, y_pred)
+f1_macro = f1_score(y_test, y_pred, average="macro")
+f1_weighted = f1_score(y_test, y_pred, average="weighted")
+
+print("\nAccuracy:", acc)
+print("F1 macro:", f1_macro)
+print("F1 weighted:", f1_weighted)
+
+print("\nClassification report:\n")
+print(classification_report(y_test, y_pred))
+
+print("\nConfusion matrix:\n")
+print(confusion_matrix(y_test, y_pred))
+
+# Save sentiment baseline artifacts
+with open("sentiment_tfidf.pkl", "wb") as f:
+    pickle.dump(sent_tfidf, f)
+with open("sentiment_logreg.pkl", "wb") as f:
+    pickle.dump(sent_clf, f)
+
+print("\nSaved sentiment_tfidf.pkl and sentiment_logreg.pkl")
+
+#%% Save enhanced dataset
+
+output_path = "presidential_statements_enhanced.csv"
+dataset.to_csv(output_path, index=False)
+print(f"\nSaved enhanced dataset to {output_path}")
+
+
+
