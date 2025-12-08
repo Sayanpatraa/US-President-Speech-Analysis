@@ -138,4 +138,6 @@ streamlit run app.py
 ```
 Patra, S. (2025). Analyzing U.S. Presidential Rhetoric Using Multi-Stage NLP Models.
 George Washington University.
+Shimelis, Y. (2025). Analyzing U.S. Presidential Rhetoric Using Multi-Stage NLP Models.
+George Washington University.
 ```
