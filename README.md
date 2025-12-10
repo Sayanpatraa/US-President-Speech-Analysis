@@ -8,7 +8,7 @@ This project analyzes U.S. presidential speeches to study how rhetoric, emotion,
 ## Methods
 - **Sentiment Analysis:** Transformer,  
 - **Topic Modeling:** Latent Dirichlet Allocation (LDA), Gensim, NMF  
-- **Classification:** Naive Bayes, Logistic Regression, LSTM , DistilBERT  
+- **Classification:** TFIDF Logistic Regression, LSTM , DistilBERT  
 - **Interpretability:** SHAP, LIME  (Future Implementation)
 
 ---
