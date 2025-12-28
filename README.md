@@ -1,4 +1,4 @@
-# DATS6312 - Analyzing Presidential Rhetoric and Political Polarization
+# Analyzing Presidential Rhetoric and Political Polarization
 
 ## About
 This project analyzes U.S. presidential speeches to study how rhetoric, emotion, and political tone have evolved over time. Using Natural Language Processing (NLP) methods, the goal is to measure sentiment, identify key topics, and explore whether language has become more unifying or divisive across different presidents and political parties.
